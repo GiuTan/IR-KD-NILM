@@ -37,8 +37,10 @@ parser.add_argument("--xai_loss", type=str, default='cosine', help="xai loss")
 parser.add_argument("--conf_use", type=bool, default=False, help="uso confidenza")
 parser.add_argument("--reg_use", type=bool, default=False, help="uso regolarizzazione")
 parser.add_argument("--precision", type=bool, default=False, help="zero-strong label loss")
-parser.add_argument("--test_test", type=bool, default=True, help="test flag")
-parser.add_argument("--model_path", type=str, default="/raid/users/eprincipi/XAIKD_extension/", help="folder for models")
+parser.add_argument("--test_test", type=bool, default=False, help="test flag")
+parser.add_argument("--model_path", type=str, default="/raid/users/eprincipi/XAIKD_extension/GITHUB/models/", help="folder for models")
+parser.add_argument("--data_path", type=str, default="/raid/users/eprincipi/", help="folder for models")
+
 arguments = parser.parse_args()
 
 
@@ -65,7 +67,7 @@ if __name__ == '__main__':
     print('Model', arguments.model)
     print('Number of convolutional blocks', arguments.num_conv)
     print('Number of gated recurrent units', arguments.num_GRUnits)
-    #print('Xai weight', arguments.xai_weight)
+    print('Xai weight', arguments.xai_weight)
     print('Reg weight', arguments.reg_weight)
     print('Output type', arguments.output_type)
     print('Target idx', arguments.target_idx)
@@ -94,23 +96,21 @@ if __name__ == '__main__':
     val_only_weak_re = False
     classes = 6
 
-    if model_ == 'strong_weakREFIT':
+    # validation data used in every part of the framework
 
-        X_val_u = np.load('/raid/users/eprincipi/KD_agg_REFIT_pretrain/new_X_val.npy')
-        Y_val_u = np.load('/raid/users/eprincipi/KD_labels_REFIT_pretrain/new_Y_val.npy')
-        Y_val_weak_u = np.load('/raid/users/eprincipi/KD_labels_REFIT_pretrain/new_Y_val_weak.npy')
-    if model_ == 'strong_weakUK':
+    X_val_u = np.load(arguments.data_path + 'KD_agg_UKDALE/new_X_val.npy')
+    Y_val_u = np.load(arguments.data_path + 'KD_labels_UKDALE/new_Y_val.npy')
+    Y_val_weak_u = np.load(arguments.data_path + 'KD_labels_UKDALE/new_Y_val_weak.npy')
 
-        X_val_u = np.load('/raid/users/eprincipi/KD_agg_UKDALE/new_X_val.npy')
-        Y_val_u = np.load('/raid/users/eprincipi/KD_labels_UKDALE/new_Y_val.npy')
-        Y_val_weak_u = np.load('/raid/users/eprincipi/KD_labels_UKDALE/new_Y_val_weak.npy')
+    # weakly labelled training data for Teacher fine-tuning and Student distillation
+    X_train_r = np.load(arguments.data_path + 'KD_agg_REFIT/new2_X_train.npy')
+    Y_train_r = np.negative(np.ones((10481, 2550, 6))) # this mimics the absence of strong labels
+    Y_train_weak_r = np.load(arguments.data_path + 'KD_labels_REFIT/new2_Y_train_weak.npy')
 
-    X_train_r = np.load('/raid/users/eprincipi/KD_agg_REFIT/new2_X_train.npy')
-    Y_train_r = np.negative(np.ones((10481, 2550, 6)))
-    Y_train_weak_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_train_weak.npy')
-    X_test_r = np.load('/raid/users/eprincipi/KD_agg_REFIT/new2_X_test.npy')
-    Y_test_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_test.npy')
-    Y_test_weak_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_test_weak.npy')
+    # test data used in every part of the framework
+    X_test_r = np.load(arguments.data_path + 'KD_agg_REFIT/new2_X_test.npy')
+    Y_test_r = np.load(arguments.data_path + 'KD_labels_REFIT/new2_Y_test.npy')
+    Y_test_weak_r = np.load(arguments.data_path + 'KD_labels_REFIT/new2_Y_test_weak.npy')
 
 
     val_l = round(len(X_test_r) / 100 * 10 / 2)
@@ -160,13 +160,6 @@ if __name__ == '__main__':
     temperature = arguments.temperature
     bet = arguments.beta
     pat = 30
-    if arguments.num_conv < 3 or arguments.num_GRUnits < 64:
-        type_ = model_ + '_T' + str(temperature) + '_' + str(bet) + 'KD_' + '_6classes_new22_REDUCED_' + str(
-            arguments.num_conv) + '_' + str(arguments.num_GRUnits) + '_NOFINETUNING'
-    else:
-        type_ = model_ + '_T' + str(temperature) + '_' + str(bet) + 'KD_' + '_6classes_new22'
-    print(type_)
-
     lr = 0.002
     weight = 1
     classes = 6
@@ -180,11 +173,13 @@ if __name__ == '__main__':
     weight_dyn2 = WeightAdjuster_TS2(weights=theta)
     early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_f1_score_stu', mode='max', patience=5, restore_best_weights=True)
 
-    # Carico il pre-trained model
-    pre_trained = params[model_]['pre_trained']
+
+
+
+    teacher_model_path = arguments.model_path + "best_teachers/new_teach_loss_reg_gnorm-w.h5"
     teacher = src.network.CRNN_t.CRNN_construction(window_size, weight, lr=lr, classes=classes, drop_out=drop,
                                                    kernel=kernel, num_layers=num_layers, gru_units=gru_units, cs=cs,
-                                                   path=pre_trained, only_strong=only_strong, temperature=temperature)
+                                                   path=teacher_model_path, only_strong=only_strong, temperature=temperature)
 
 
 
@@ -195,10 +190,6 @@ if __name__ == '__main__':
     MODEL_ = STU_TEACH(student, teacher)
 
 
-    if model_ == 'strong_weakUK':
-        MODEL_.teacher.load_weights('/raid/users/eprincipi/Knowledge_Distillation/fine_tuned_teachers/teacher_VAL_UK_completeRETRAIN_FocalLoss_new221_64.h5') #
-    elif model_ == 'strong_weakREFIT':
-        MODEL_.teacher.load_weights('/raid/users/eprincipi/Knowledge_Distillation/fine_tuned_teachers/teacher_strong_weakREFIT_FocalLoss_new221_64.h5')
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
 
@@ -241,12 +232,10 @@ if __name__ == '__main__':
         best_epoch = np.argmax(losses)
 
         # PREDIZIONE TEACHER E STUDENT
-        PATH_TEST = f"PROVA_precision_loss_{model_}_weight_{xai_weight}_{reg_weight}_{arguments.target_idx}_{arguments.output_type}_{best_epoch}_{best_loss}_model.h5"
-        #PATH_TEST = f"{model_}_{reg_weight}_{arguments.target_idx}_{arguments.output_type}_{best_epoch}_{best_loss}_model.h5"
-
+        PATH_TEST = arguments.model_path + f"PROVA_precision_loss_{model_}_weight_{xai_weight}_{reg_weight}_{arguments.target_idx}_{arguments.output_type}_{best_epoch}_{best_loss}_model.h5"
         MODEL_.student.save_weights(PATH_TEST)
     else:
-        PATH_TEST= arguments.model_path + 'old_students/DW.h5'
+        PATH_TEST= arguments.model_path + 'best_students/DW.h5'
         MODEL_.student.load_weights(PATH_TEST)
 
     val_soft_strong, output_strong, output_weak = MODEL_.predict(x=X_val)
@@ -273,7 +262,7 @@ if __name__ == '__main__':
     output_strong = output_strong.reshape(shape, 1)
     output_strong_test = output_bin.reshape(shape_test, 1)
 
-    np.save(arguments.model_path + 'old_students/'+ str(arguments.target_idx) +'_pred.npy',output_strong_test)
+    np.save(arguments.model_path + 'best_students/'+str(arguments.target_idx) +'_pred.npy',output_strong_test)
 
 
     print("STRONG SCORES:")
