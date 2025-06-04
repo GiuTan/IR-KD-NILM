@@ -31,14 +31,14 @@ parser.add_argument("--temperature", type=float, default=2, help="Temperature fo
 parser.add_argument("--beta", type=float, default=0.9, help="KD loss weight")
 parser.add_argument("--fine_tuning", type=bool, default=False, help="Flag to fine-tune the teacher before KD")
 parser.add_argument("--model", type=str, default="strong_weakUK", help="UKDALE or REFIT pre-training selection")
-parser.add_argument("--num_conv", type=int, default=1, help="Number of convolutional blocks")
-parser.add_argument("--num_GRUnits", type=int, default=32, help="Number of GRUnits")
-parser.add_argument("--xai_weight", type=float, default=0.05, help="loss weight for (strong) xai part")
+parser.add_argument("--xai_weight", type=float, default=0.5, help="loss weight for (strong) xai part")
 parser.add_argument("--output_type", type=str, default='weak', help="xai out type")
 parser.add_argument("--target_idx", type=int, default=3, help="target idx")
 parser.add_argument("--xai_loss", type=str, default='cosine', help="xai loss")
 parser.add_argument("--reg", type=str, default='gnorm-w', help="Flag to use regularizer")
-parser.add_argument("--reg_weight", type=float, default=0, help="Flag to set reg weight")
+parser.add_argument("--reg_weight", type=float, default=0.05, help="Flag to set reg weight")
+parser.add_argument("--model_path", type=str, default="/raid/users/eprincipi/XAIKD_extension/GITHUB/models/", help="folder for models")
+parser.add_argument("--data_path", type=str, default="/raid/users/eprincipi/", help="folder for models")
 arguments = parser.parse_args()
 
 
@@ -93,8 +93,6 @@ if __name__ == '__main__':
     print('Beta', arguments.beta)
     print('Fine-tuning', arguments.fine_tuning)
     print('Model', arguments.model)
-    print('Number of convolutional blocks', arguments.num_conv)
-    print('Number of gated recurrent units', arguments.num_GRUnits)
     print('Xai weight', arguments.xai_weight)
     print('Reg weight', arguments.reg_weight)
     print('Output type', arguments.output_type)
@@ -103,17 +101,11 @@ if __name__ == '__main__':
     regularizer = arguments.reg
     reg_weight = arguments.reg_weight
 
-    #disable_eager_execution()
+
 
     print('Start')
-    #path = '/home/eprincipi/Weak_Supervision/weak_labels/'
-    #file_agg_path = path + 'dataset_weak/aggregate_data_noised/'
-    #file_labels_path = path + 'dataset_weak/labels/'
 
-    # REFIT path
-    #WEAK_agg_resample_path = '/raid/users/eprincipi/resampled_agg_REFIT/'
-
-    model_ = arguments.model  # 'strong_weakREFIT'  # 'strong_weakUK'
+    model_ = arguments.model
 
     # Flag Inizialization
     flag = arguments.fine_tuning
@@ -123,90 +115,34 @@ if __name__ == '__main__':
         test = True
     print('Flag', flag)
     strong = False
-    strong_weak = True  # se avessi voluto escludere da alcuni segmenti le labels weak
+    strong_weak = True
     test_unseen = True
     weak_counter = True
     validation_refit = False
     val_only_weak_re = False
     classes = 6
 
-    # X_train_r = np.load('/raid/users/eprincipi/KD_agg_REFIT/new2_X_train.npy')
-    # Y_train_r = np.negative(
-    #     np.ones((10481, 2550, 6)))  # np.load('/raid/users/eprincipi/KD_labels_REFIT/new_Y_train.npy')
-    # Y_train_weak_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_train_weak.npy')
+    # validation data used in every part of the framework
+    X_val_u = np.load(arguments.data_path + 'KD_agg_UKDALE/new_X_val.npy')
+    Y_val_u = np.load(arguments.data_path + 'KD_labels_UKDALE/new_Y_val.npy')
+    Y_val_weak_u = np.load(arguments.data_path + 'KD_labels_UKDALE/new_Y_val_weak.npy')
 
-    X_test_r = np.load('/raid/users/eprincipi/KD_agg_REFIT/new2_X_test.npy')
-    Y_test_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_test.npy')
-    # Y_test_weak_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_test_weak.npy')
+    # weakly labelled training data for Teacher fine-tuning and Student distillation
+    X_train_r = np.load(arguments.data_path + 'KD_agg_REFIT/new2_X_train.npy')
+    Y_train_r = np.negative(np.ones((10481, 2550, 6)))  # this mimics the absence of strong labels
+    Y_train_weak_r = np.load(arguments.data_path + 'KD_labels_REFIT/new2_Y_train_weak.npy')
 
-    # TO DO CONCATENA I DUE VALIDATION
-    val_l = round(len(X_test_r) / 100 * 10 / 2)
-    """ 
-    # need ukdale validation
-    X_val_u = np.load(
-        '/raid/users/eprincipi/KD_agg_UKDALE/new_X_val.npy')  # np.concatenate([X_val_u, X_test_r[:val_l], X_test_r[-val_l:]], axis=0)  #
-    Y_val_u = np.load(
-        '/raid/users/eprincipi/KD_labels_UKDALE/new_Y_val.npy')  # np.concatenate([Y_val_u, Y_test_r[:val_l], Y_test_r[-val_l:]], axis=0)  #
-    Y_val_weak_u = np.load(
-        '/raid/users/eprincipi/KD_labels_UKDALE/new_Y_val_weak.npy')  # np.concatenate([Y_val_weak_u, Y_test_weak_r[:val_l], Y_test_weak_r[-val_l:]], axis=0)  #
-    X_val_tot = X_val_u  # np.concatenate([X_val_u, X_test_r[:val_l], X_test_r[-val_l:]], axis=0)  #
-    Y_val = Y_val_u[:, :,
-            :]  # np.concatenate([Y_val_u, Y_test_r[:val_l], Y_test_r[-val_l:]], axis=0)  #
-    Y_val_weak = Y_val_weak_u[:, :,
-                 :]  # np.concatenate([Y_val_weak_u, Y_test_weak_r[:val_l], Y_test_weak_r[-val_l:]], axis=0)  #
-    Y_val_weak = np.expand_dims(Y_val_weak, axis=2)  # (x, 2550, 1)
-    X_test_r = X_test_r[val_l:-val_l]
-    Y_test_r = Y_test_r[val_l:-val_l][:, :, :]
+    # test data used in every part of the framework
+    X_test_r = np.load(arguments.data_path + 'KD_agg_REFIT/new2_X_test.npy')
+    Y_test_r = np.load(arguments.data_path + 'KD_labels_REFIT/new2_Y_test.npy')
+    Y_test_weak_r = np.load(arguments.data_path + 'KD_labels_REFIT/new2_Y_test_weak.npy')
 
-    # Y_val = output_binarization(Y_val, 0.5, classes, 2550)
-    Y_val = np.where(Y_val >= 0.5, 1, Y_val)
-    Y_val = np.where((Y_val != -1) & (Y_val < 0.5), 0, Y_val)
-    Y_val = np.expand_dims(Y_val, axis=2)
-    # Y_test = output_binarization(Y_test_r, 0.5, classes, 2550)
-    Y_test = np.where(Y_test_r >= 0.5, 1, Y_test_r)
-    Y_test = np.where((Y_test != -1) & (Y_test < 0.5), 0, Y_test)
-    Y_test = np.expand_dims(Y_test, axis=2)
 
-    # assert (len(X_val_u) == len(Y_val_u))
-    # assert (len(Y_val_u) == len(Y_val_weak_u))
-
-    x_train = X_train_r
-    y_strong_train = Y_train_r[:, :, :]
-    y_strong_train = np.expand_dims(y_strong_train, axis=2)
-    y_weak_train = Y_train_weak_r[:, :, :]
-    y_weak_train = np.expand_dims(y_weak_train, axis=2)"""
-    if model_ == 'strong_weakREFIT':
-        X_train_u = np.load('/raid/users/eprincipi/KD_agg_REFIT_pretrain/new_X_train.npy')
-        Y_train_u = np.load('/raid/users/eprincipi/KD_labels_REFIT_pretrain/new_Y_train.npy')
-        Y_train_weak_u = np.load('/raid/users/eprincipi/KD_labels_REFIT_pretrain/new_Y_train_weak.npy')
-        X_val_u = np.load('/raid/users/eprincipi/KD_agg_REFIT_pretrain/new_X_val.npy')
-        Y_val_u = np.load('/raid/users/eprincipi/KD_labels_REFIT_pretrain/new_Y_val.npy')
-        Y_val_weak_u = np.load('/raid/users/eprincipi/KD_labels_REFIT_pretrain/new_Y_val_weak.npy')
-    if model_ == 'strong_weakUK':
-
-        X_train_u = np.load('/raid/users/eprincipi/KD_agg_UKDALE/new_X_train.npy')
-        Y_train_u = np.load('/raid/users/eprincipi/KD_labels_UKDALE/new_Y_train.npy')
-        Y_train_weak_u = np.load('/raid/users/eprincipi/KD_labels_UKDALE/new_Y_train_weak.npy')
-        X_val_u = np.load('/raid/users/eprincipi/KD_agg_UKDALE/new_X_val.npy')
-        Y_val_u = np.load('/raid/users/eprincipi/KD_labels_UKDALE/new_Y_val.npy')
-        Y_val_weak_u = np.load('/raid/users/eprincipi/KD_labels_UKDALE/new_Y_val_weak.npy')
-
-    X_train_r = np.load('/raid/users/eprincipi/KD_agg_REFIT/new2_X_train.npy')
-    Y_train_r = np.negative(np.ones((10481,2550,6))) #np.load('/raid/users/eprincipi/KD_labels_REFIT/new_Y_train.npy')
-    Y_train_weak_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_train_weak.npy')
-    # X_val_r = np.load('/raid/users/eprincipi/KD_agg_REFIT/new_X_val.npy')
-    # Y_val_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new_Y_val.npy')
-    # Y_val_weak_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new_Y_val_weak.npy')
-    X_test_r = np.load('/raid/users/eprincipi/KD_agg_REFIT/new2_X_test.npy')
-    Y_test_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_test.npy')
-    Y_test_weak_r = np.load('/raid/users/eprincipi/KD_labels_REFIT/new2_Y_test_weak.npy')
-
-    # TODO CONCATENA I DUE VALIDATION
     val_l = round(len(X_test_r) / 100 * 10 /2 )
 
-    X_val_tot = X_val_u #np.concatenate([X_val_u,X_test_r[:val_l],X_test_r[-val_l:]], axis=0)  #
-    Y_val =  Y_val_u #np.concatenate([Y_val_u,Y_test_r[:val_l],Y_test_r[-val_l:]], axis=0) #
-    Y_val_weak = Y_val_weak_u #np.concatenate([Y_val_weak_u, Y_test_weak_r[:val_l],Y_test_weak_r[-val_l:]], axis=0) #
+    X_val_tot = X_val_u
+    Y_val =  Y_val_u
+    Y_val_weak = Y_val_weak_u
     X_test_r = X_test_r[val_l:-val_l]
     Y_test_r = Y_test_r[val_l:-val_l]
     Y_test_weak_r = Y_test_weak_r[val_l:-val_l]
@@ -218,7 +154,7 @@ if __name__ == '__main__':
     y_strong_train = Y_train_r
     y_weak_train = Y_train_weak_r
 
-    #weak_count(y_weak_train, classes=classes)
+
 
     # Standardization with uk-dale values
     if model_ == 'solo_weakUK' or model_ == 'strong_weakUK' or model_ == 'mixed':
@@ -228,18 +164,11 @@ if __name__ == '__main__':
         train_mean = refit_params['mean']
         train_std = refit_params['std']
 
-    #train_mean = refit_params['mean']
-    #train_std = refit_params['std']
-
-    #print("Mean train")
-    #print(train_mean)
-    #print("Std train")
-    #print(train_std)
 
     x_train = standardize_data(x_train, train_mean, train_std)
     X_val = standardize_data(X_val_tot, train_mean, train_std)
     X_test = standardize_data(X_test_r, train_mean, train_std)
-    #print(X_val.shape)
+
     batch_size = 64
     window_size = 2550
     drop = params[model_]['drop']
@@ -251,12 +180,6 @@ if __name__ == '__main__':
     temperature = arguments.temperature
     bet = arguments.beta
     pat = 30
-    if arguments.num_conv < 3 or arguments.num_GRUnits < 64:
-        type_ = model_ + '_T' + str(temperature) + '_' + str(bet) + 'KD_' + '_6classes_new22_REDUCED_' + str(
-            arguments.num_conv) + '_' + str(arguments.num_GRUnits) + '_NOFINETUNING'
-    else:
-        type_ = model_ + '_T' + str(temperature) + '_' + str(bet) + 'KD_' + '_6classes_new22'
-    print(type_)
 
     lr = 0.002
     weight = 1
@@ -282,7 +205,7 @@ if __name__ == '__main__':
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
 
     MODEL.compile(student_optimizer=optimizer, teacher_optimizer=optimizer,
-                  loss={"strong_loss": weak_consistency_loss,
+                  loss={"strong_loss": zero_strong_label_loss_T,
                         "weak_loss": BinaryFocalLoss(gamma=0.2)},
                   loss_weights=[gamma], Temperature=1, F1_score=StatefullF1(),
                   regularizer=regularizer, reg_constant=reg_weight

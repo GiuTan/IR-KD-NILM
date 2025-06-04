@@ -67,7 +67,7 @@ def xai_cosine_loss(teacher_explanation, student_explanation, axis=1, confidence
 
     return tf.reduce_mean(cosine_similarity_loss)
 
-def weak_consistency_loss(y_true, y_pred,y_w):
+def zero_strong_label_loss_T(y_true, y_pred,y_w):
 
     y_true = tf.multiply(tf.cast(y_true, tf.float32), tf.cast(y_w, tf.float32))
     # TODO DECOMMENTARE SE ADDESTRIAMO IL TEACHER
@@ -77,6 +77,14 @@ def weak_consistency_loss(y_true, y_pred,y_w):
     #loss = K.binary_crossentropy(y_true,y_pred)
     loss = K.binary_crossentropy(new_true, new_pred)
     return tf.reduce_mean(loss)
+def zero_strong_label_loss_S(y_true, y_pred,y_w):
+
+    y_true = tf.multiply(tf.cast(y_true, tf.float32), tf.cast(y_w, tf.float32))
+
+    loss = K.binary_crossentropy(y_true,y_pred)
+
+    return tf.reduce_mean(loss)
+
 
 def binary_crossentropy_weak(y_true, y_pred):
 

@@ -78,8 +78,7 @@ if __name__ == '__main__':
 
     print('Start')
 
-
-    model_ = arguments.model  # 'strong_weakREFIT'  # 'strong_weakUK'
+    model_ = arguments.model
 
     # Flag Inizialization
     flag = arguments.fine_tuning
@@ -204,10 +203,9 @@ if __name__ == '__main__':
         xai_loss = xai_cosine_loss
     elif arguments.xai_loss == 'rmse':
         xai_loss = root_mean_squared_error
-    if arguments.precision:
-        kd_loss = weak_consistency_loss
-    else:
-        kd_loss = binary_crossentropy
+
+    kd_loss = zero_strong_label_loss_S
+
     MODEL_.compile(student_optimizer=optimizer, teacher_optimizer=optimizer,
                    loss={"student_loss": loss_fn_sup, "KD_loss": kd_loss, "xai_loss": xai_loss},
                    loss_weights=[alpha, beta, gamma, xai_weight], Temperature=temperature, F1_score=StatefullF1(n_class=1),
